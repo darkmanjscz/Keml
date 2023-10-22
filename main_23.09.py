@@ -2,7 +2,6 @@
 import sys
 import traceback
 
-from GetDataFromExcel import Main as gd
 from selenium import webdriver
 from google_currency import convert
 from selenium.webdriver.chrome.options import Options
@@ -27,13 +26,11 @@ class Monitoring:
         info = text
         createtime = datetime.datetime.now()
         head = "---------------------------------------------------------------------------\n"
-        row1 = "<b> {} </b> \n".format("🔥🔥🔥 " + process)
-        row2 = "<i> {} </i> \n".format("🖥️ " + server)
-        row3 = "<strong> {} </strong>\n".format("💡 " + info.replace("\n", ""))
-        row4 = " <em> {} </em>\n".format("⌚ " + str(createtime))
+        row1 = " <em> {} </em>\n".format(str(createtime))
+        row3 = "<strong> {} </strong>\n".format(info.replace("\n", ""))
         footer = "---------------------------------------------------------------------------\n"
 
-        msg = row1 + row2 + row3 + row4
+        msg = row1 + row3
         self.send_message_bot(msg)
 
     def send_message_bot(self, text):
@@ -52,6 +49,7 @@ class Monitoring:
             except:
                 self.logging_('_', '_', 'ошибка при отправке сообщения в телегу', type='system')
 
+
 class Config:
 
     sql_update = """
@@ -62,7 +60,6 @@ class Config:
                     commit;
                 end;
     """
-
     sql_update_active = """
             begin;
                 update public.data_from_wb
@@ -75,7 +72,6 @@ class Config:
                 SELECT count(*)
                 FROM public.data_from_wb
                 where "vendorCode" = '{0}' """
-
     sql_insert = """Begin; 
                 INSERT INTO public.data_from_wb(
                 id, "vendorCode", "barCode", source, "userName", is_active)
@@ -83,7 +79,6 @@ class Config:
                 commit;
                 end;
         """
-
     sql_insert_logs = """
         Begin;
             INSERT INTO public.logs(
@@ -92,6 +87,21 @@ class Config:
         commit;
         end;
     """
+    sql_insert_currency = """
+        Begin;
+            INSERT INTO public.currency_history(
+                id, currency, insert_date)
+                VALUES (nextval('currency_history_id_seq'), '{0}', now());
+        commit;
+        end;
+    """
+    sql_get_last_currency = """
+                SELECT currency
+                FROM public.currency_history
+                ORDER BY insert_date DESC
+                LIMIT 1"""
+
+    percent_diff = 20
 
 
 class PostGreSql:
@@ -127,14 +137,12 @@ class PostGreSql:
         return data
 
 
-class AutomationWILDBERRIES(PostGreSql):
+class AutomationWILDBERRIES(PostGreSql, Monitoring):
 
     def __init__(self):
         super().__init__()
         self.base_url = "https://suppliers-api.wildberries.ru/public/api/v1/info"
-
         self.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NJRCI6IjIzZGFjZTgzLTI5YWYtNGExYS1hZmNmLTI4NmQ3MmE0NWNjMyJ9.y5-UAnKoezTMjA6X7rERZuv8B89fozD2rSwthnbHhE8"
-
 
     def start_browser(self):
         CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -142,7 +150,6 @@ class AutomationWILDBERRIES(PostGreSql):
         WINDOW_SIZE = "1920,1080"
         options = Options()
         service = Service(executable_path=CHROMEDRIVER_PATH)
-
         options.add_argument("download.default_directory=C:/temp")
         options.add_argument("--disable-extensions")
         options.add_argument("--headless")
@@ -487,6 +494,7 @@ class AutomationWILDBERRIES(PostGreSql):
         return amount * mn / currency
 
     def synchronization_price(self, barcode_json, currency_):
+        updated_cnt = 0
         all_prices = self.get_prices()
         prices = []
         for row in barcode_json:
@@ -499,7 +507,10 @@ class AutomationWILDBERRIES(PostGreSql):
                 self.logging_(row['sku'], row['source'], 'новая цена = ' + str(converted_sum) + ',  '
                                                    'старая цена = '+ str(wb_price), type='price')
         if len(prices) > 0:
+            updated_cnt += len(prices)
             self.update_prices(prices)
+
+        return updated_cnt
 
     def update_prices(self, data):
 
@@ -523,6 +534,7 @@ class AutomationWILDBERRIES(PostGreSql):
                 return
 
     def synchronization_stock(self, db_data, wb_data, lst_warehouses_id):
+        updated_cnt = 0
         barcode_json = [{'sku': a['sizes'][0]['skus'][0], 'vendorCode': a['vendorCode']} for a in wb_data]
         barcode_lst = [a["sku"] for a in barcode_json]
         for j in range(0, len(barcode_lst), 1000):
@@ -544,7 +556,9 @@ class AutomationWILDBERRIES(PostGreSql):
                     self.logging_(k["sku"], '', 'обнуляю остаток у карточки, 0 =>' + str(k["sku"]), type='stock')
                     new_stock["stocks"].append(tmp_stock)
             if new_stock['stocks']:
+                updated_cnt += len(new_stock['stocks'])
                 self.upd_warehouse(new_stock, lst_warehouses_id)
+        return updated_cnt
 
 
 class Main(AutomationWILDBERRIES, Config):
@@ -565,8 +579,6 @@ class Main(AutomationWILDBERRIES, Config):
         self.logging_('_', '_', 'обновляю БД исходя от данных в файлах')
         temp_list = []
         for data in db_data:
-            if data[1] == '37024AL':
-                print()
             for file, rows in files_data.items():
                 temp_row = [row['price'] for row in rows if data[1].strip() == row['kod'].strip()]
                 if len(temp_row) == 1:
@@ -579,28 +591,33 @@ class Main(AutomationWILDBERRIES, Config):
                     self.logging_('_', '_', 'нашел больше 1 карточки по вендоркоду ' + data[1].strip(), type='exclude')
 
             if data[1] not in temp_list:
-                self.logging_('_', '_', 'не нашел товар по вендоркоду ' + data[1].strip(), type='is_active')
+                # self.logging_('_', '_', 'не нашел товар по вендоркоду ' + data[1].strip(), type='is_active')
                 sql_active = Config.sql_update_active.format(False, data[0])
                 self.execute_sql(self.conn, sql_active)
 
-    def stay_active(self, idle_time=50):
-        import pyautogui
-        pyautogui.FAILSAFE = False
-        count = 0
-        while count < idle_time:
-            count += 1
-            for i in range(0, 200):
-                try:
-                    pyautogui.moveTo(0, i*4)
-                    pyautogui.moveTo(1,1)
-                except KeyboardInterrupt:
-                    sys.exit()
-            for i in range(0,3):
-                pyautogui.press("shift")
-            print(f'idle time {count}')
+    def get_currency(self):
+        currency_json = json.loads(convert('kzt', 'rub', 1000))
+        currency_value = 1000 / float(currency_json["amount"])
+        self.send_alert(f'текущий курс валют {round(currency_value, 2)}')
+        previuos_currency = self.execute_sql(self.conn, self.sql_get_last_currency, param=1)
+        self.send_alert(f'предыдущий курс валют {round(float(previuos_currency[0][0]), 2)}')
+        difference = (100/float(previuos_currency[0][0]))*abs(float(previuos_currency[0][0])-currency_value)
+        self.logging_('_', '_', f'текущий курс валют {currency_value}', 'currency')
+        self.logging_('_', '_', f'предыдущий курс валют {previuos_currency[0][0]}', 'currency')
+        self.logging_('_', '_', f'Разница курс валют составляет {difference} %', 'currency')
+        self.send_alert(f'Разница курс валют составляет {difference} %')
+        self.execute_sql(self.conn, self.sql_insert_currency.format(currency_value))
+        if difference > self.percent_diff:
+            self.send_alert(f'Пропускаю данную сессию {difference} %')
+            return 0
+        else:
+            return currency_value
 
     def run_robot(self):
-
+        currency = self.get_currency()
+        if currency == 0:
+            return
+        updated_data = {'updated_prices': 0, 'updated_stock': 0}
         wb_data = self.get_all_cards_from_wb()
         db_data = self.get_data_from_db()
         db_data = db_data if db_data else []
@@ -616,48 +633,41 @@ class Main(AutomationWILDBERRIES, Config):
         warehouses_lst = self.get_warehouses()
         db_data = self.get_data_from_db(sql="""select * from public.data_from_wb where "source" != ''""")
         barcode_json = self.collect_barcodes(db_data, wb_data)
-        currency = json.loads(convert('kzt', 'rub', 1000))
-        currency_ = 1000 / float(currency["amount"])
-        # currency_ = 5.45 # don't forget!!!!!
         for i in range(len(warehouses_lst)):
-            self.synchronization_price(barcode_json, currency_)
-            self.synchronization_stock(db_data, wb_data, warehouses_lst[i]["id"])
-        # self.conn.close()
+            updated_data['updated_prices'] = self.synchronization_price(barcode_json, currency)
+            updated_data['updated_stock'] = self.synchronization_stock(db_data, wb_data, warehouses_lst[i]["id"])
+        return updated_data
 
     def main(self):
 
-        cls = Monitoring()
-        cls.send_alert('инициализация робота')
-        # time.sleep(120)
+        self.send_alert('инициализация робота')
         while True:
 
             now = datetime.datetime.now()
-            today8am = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            today10pm = now.replace(hour=23, minute=59, second=0, microsecond=0)
+            begin_time = now.replace(hour=8, minute=0, second=0, microsecond=0)
+            end_time = now.replace(hour=20, minute=0, second=0, microsecond=0)
             wb_error = False
-            if today10pm > now > today8am:
+            if end_time > now > begin_time:
                 try:
-                    cls.send_alert('запускаю робота!!!')
                     self.logging_('_', '_', 'запускаю робота!!!')
                     self.start_browser()
-                    self.run_robot()
+                    result = self.run_robot()
+                    self.send_alert(f'обновлено цен {result["updated_prices"]}')
+                    self.send_alert(f'обновлено остатков {result["updated_stock"]}')
                     self.logging_('_', '_', 'завершаю работу!!!')
-                    cls.send_alert('завершаю роботу успешно!!!')
+                except TypeError:
+                    wb_error = True
+                    self.logging_('_', '_', 'ошибка wb, повторю запрос через 5 мин')
+                    time.sleep(300)
                 except Exception as ex:
-                    exc_msg = traceback.print_exc()
-                    print('********************************************')
                     self.logging_('_', '_', 'ошибка в работе робота!!!')
-                    cls.send_alert('завершаю роботу с ошибками!!!')
-                    cls.send_alert(str(ex.args))
+                    self.send_alert('ошибка в работе робота!!!')
+                    self.send_alert(str(ex.args))
 
                 finally:
+                    if not wb_error:
+                        time.sleep(7200)
                     self.end_session()
-                    time.sleep(1800)
-
-                #     if not wb_error:
-                        # self.stay_active()
-            # else:
-            #     self.stay_active()
 
 
 # Press the green button in the gutter to run the script.
