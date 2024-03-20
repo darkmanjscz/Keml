@@ -10,8 +10,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time, zipfile, json, re, psycopg2
 import xlrd, requests, openpyxl, uuid
-import datetime
+import datetime, os
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.action_chains import ActionChains
 
 
 class Monitoring:
@@ -23,16 +24,19 @@ class Monitoring:
 
         process = "update WB"
         server = "PC KEML"
-        info = text
-        createtime = datetime.datetime.now()
-        head = "---------------------------------------------------------------------------\n"
-        row1 = " <em> {} </em>\n".format(str(createtime))
-        row3 = "<strong> {} </strong>\n".format(info.replace("\n", ""))
-        footer = "---------------------------------------------------------------------------\n"
+        try:
+            info = text
+            createtime = datetime.datetime.now()
+            head = "---------------------------------------------------------------------------\n"
+            row1 = " <em> {} </em>\n".format(str(createtime))
+            row3 = "<strong> {} </strong>".format(info)
+            footer = "---------------------------------------------------------------------------\n"
 
-        msg = row1 + row3
-        self.send_message_bot(msg)
+            msg = row1 + row3
 
+            self.send_message_bot(msg)
+        except:
+            pass
     def send_message_bot(self, text):
         endPoint = "https://api.telegram.org/bot"
         # id = "-579581470"
@@ -142,8 +146,8 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
     def __init__(self):
         super().__init__()
         self.base_url = "https://suppliers-api.wildberries.ru/public/api/v1/info"
-        self.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NJRCI6IjIzZGFjZTgzLTI5YWYtNGExYS1hZmNmLTI4NmQ3MmE0NWNjMyJ9.y5-UAnKoezTMjA6X7rERZuv8B89fozD2rSwthnbHhE8"
-
+        # self.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NJRCI6IjIzZGFjZTgzLTI5YWYtNGExYS1hZmNmLTI4NmQ3MmE0NWNjMyJ9.y5-UAnKoezTMjA6X7rERZuv8B89fozD2rSwthnbHhE8"
+        self.token = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjMxMDI1djEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTcxODM5MTkxNCwiaWQiOiJjMmQ1MjllZi1jYTc4LTQ1ODEtYTYwMC0xOGRhYmQ1NmY5ZmYiLCJpaWQiOjYwNjA2MzAyLCJvaWQiOjc5NTIzNCwicyI6NTEwLCJzYW5kYm94IjpmYWxzZSwic2lkIjoiNWZlMzVmY2MtZDA0MC00NjhjLThjODctZDBjNmYwNTI0MjBjIiwidWlkIjo2MDYwNjMwMn0.wli1iIa1e3fx7SRKUznOdfQf7rCd1wsmmwWUNzpGpBxmXV5LNzFqvSgoplL-i0EO-ShZRnxu-p38x7uFk0lXjw"
     def start_browser(self):
         CHROME_PATH = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
         CHROMEDRIVER_PATH = r"C:\Projects\Keml\chromedriver-win64\chromedriver-win64\chromedriver.exe"
@@ -153,14 +157,14 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
         options.add_argument("download.default_directory=C:/temp")
         options.add_argument("--disable-extensions")
         options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
+        options.add_argument("--no-sandboxw")
         options.add_argument("--disable-gpu")
         options.add_experimental_option('useAutomationExtension', False)
         options.add_argument('--disable-dev-shm-usage')
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_argument('--disable-blink-features=AutomationControlled')
 
-        options.add_argument("--headless")
+        # options.add_argument("--headless")
         options.add_argument("--window-size=%s" % WINDOW_SIZE)
         options.binary_location = CHROME_PATH
         self.driver = webdriver.Chrome(options=options, service=service)
@@ -194,13 +198,19 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
             EC.element_to_be_clickable((By.XPATH, xpath)))
         return element
 
+
+    def find_by_xpath_txt(self, txt):
+        element = WebDriverWait(self.driver, 20).until(
+            EC.element_to_be_clickable((By.XPATH, f"//*[contains(text(),'{txt}')]")))
+        return element
+
     def unzip_file(self, path):
         with zipfile.ZipFile(path, 'r') as zip:
             zip.extract('pdprice.xls', 'C:/temp')
             return path.replace("zip", "xls")
 
     def authorization_pulser(self):
-        self.driver.get("http://pulser.kz/")
+        self.driver.get("http://old.pulser.kz/")
         login = self.find_by_id('logInput')
         psw = self.find_by_id('pasInput')
         login.send_keys("reseller")
@@ -245,8 +255,17 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
         path = "C:/temp/"
         return path + element.get_attribute("href").split("/")[-1]
 
+    def close_notice(self):
+        try:
+            WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, "notification_deny"))).click()
+        except Exception as ex:
+            print(ex)
+
+
     def download_file_al_style(self):
+
         element = self.find_by_xpath("//a[@href='https://b2bportal.al-style.kz/export/Al-Style_price.xlsx']")
+        self.close_notice()
         self.highlight(element, 3, "blue", 5)
         element.click()
         time.sleep(3)
@@ -264,9 +283,10 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
     def get_data_from_pulser(self):
         self.authorization_pulser()
         zip_file = self.download_file_pulser()
-        xls_file = self.unzip_file(zip_file)
+        if os.stat(zip_file).st_size != 0:
+            xls_file = self.unzip_file(zip_file)
 
-        return xls_file
+            return xls_file
 
     def get_data_from_al_style(self):
         self.authorization_al_style()
@@ -282,6 +302,8 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
 
     def read_xls_from_pulser(self, file):
         data = []
+        if not file:
+            return data
         book = xlrd.open_workbook(file)
         sheet = book.sheet_by_index(0)
         for rx in range(sheet.nrows):
@@ -305,8 +327,7 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
                               'пропукаю экспорт товара из файла, поскольку кол-во меньше 5 =>'
                               + str(sheet.cell(row=rx, column=1).value) + 'AL', type="download")
                 continue
-            if str(sheet.cell(row=rx, column=1).value) == '37024':
-                print()
+
             data.append({"kod": str(sheet.cell(row=rx, column=1).value) + 'AL',
                          "price": int(sheet.cell(row=rx, column=5).value)})
         return data
@@ -347,7 +368,7 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
         return wlb_kt
 
     def get_all_cards_from_wb(self):
-        self.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NJRCI6IjIzZGFjZTgzLTI5YWYtNGExYS1hZmNmLTI4NmQ3MmE0NWNjMyJ9.y5-UAnKoezTMjA6X7rERZuv8B89fozD2rSwthnbHhE8"
+        self.token = "Bearer eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjMxMDI1djEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTcxODQzMTQxMiwiaWQiOiJlMTk3ODFiNy0xNmFmLTQ3NTktYTYyMS03ZDVlOGIzMWZiOTAiLCJpaWQiOjYwNjA2MzAyLCJvaWQiOjc5NTIzNCwicyI6NTEwLCJzYW5kYm94IjpmYWxzZSwic2lkIjoiNWZlMzVmY2MtZDA0MC00NjhjLThjODctZDBjNmYwNTI0MjBjIiwidWlkIjo2MDYwNjMwMn0.FgMpsnwF7EBLbwSy5hLYTqqlxTHk_HwNKvUGi47ZxReKSlpxHwFz8A7_it68Zq04cZ6nPJ1gKlGyDDTd17ab6A"
         data = {
             "sort": {
                 "cursor": {
@@ -382,9 +403,9 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
 
     def collect_barcodes(self, db_data, wb_data):
         actual_data = [a
-                               for a in db_data
-                               if a[3] != "" and a[5] and not a[6]
-                               ]
+                       for a in db_data
+                       if a[3] != "" and a[5] and not a[6]
+                       ]
         barcode_lst = []
 
         for row in actual_data:
@@ -501,8 +522,11 @@ class AutomationWILDBERRIES(PostGreSql, Monitoring):
 
             vendor_price = float(row['price'])
             converted_sum = self.calculate_sum(vendor_price, currency_)
-            wb_price = [a['price'] for a in all_prices if a['nmId'] == row['nmId']][0]
-            if round(converted_sum) != wb_price:
+            wb_price_ = [a['price'] for a in all_prices if a['nmId'] == row['nmId']]
+            wb_price = wb_price_[0] if wb_price_ else 0
+            if wb_price == 0:
+                self.logging_(row['sku'], row['source'], f'надо проверить = {row}', type='to_check')
+            if round(converted_sum) != wb_price and wb_price != 0:
                 prices.append({"nmId": row['nmId'], "price": int(round(converted_sum, 0))})
                 self.logging_(row['sku'], row['source'], 'новая цена = ' + str(converted_sum) + ',  '
                                                    'старая цена = '+ str(wb_price), type='price')
@@ -570,26 +594,42 @@ class Main(AutomationWILDBERRIES, Config):
         for i in range(len(wb_data)):
             barCode = wb_data[i]["sizes"][0]['skus'][0].strip()
             vendorCode = wb_data[i]['vendorCode'].strip()
+            sql_cnt = Config.sql_count.format(vendorCode)
+            data_count = self.execute_sql(self.conn, sql_cnt, 1)
+            if data_count[0][0] > 0:
+                continue
             sql = Config.sql_insert
             sql = sql.format(vendorCode, barCode, '', 'Keml', True)
             if not self.execute_sql(self.conn, sql):
                 self.logging_('barcode', 'source', 'ошибка записи по вендоркоду ' + vendorCode)
 
-    def update_column_source_in_db(self, files_data, db_data):
+    def update_column_source_in_db(self, files_data, db_data, wb_data):
         self.logging_('_', '_', 'обновляю БД исходя от данных в файлах')
         temp_list = []
+        new_data = []
+        for file, rows in files_data.items():
+            for row in rows:
+                wb_exists = [wb for wb in wb_data if wb['vendorCode'].strip() in row['kod'].strip()]
+                if not wb_exists:
+                    continue
+                temp_row = [(row['price'], data[0]) for data in db_data if data[1].strip() == row['kod'].strip()]
+                if len(temp_row) == 1:
+                    temp_list.append(row['kod'])
+                    id_ = temp_row[0][1]
+                    sql_update = Config.sql_update.format(file, temp_row[0][0], id_)
+                    if not self.execute_sql(self.conn, sql_update):
+                        self.logging_('_', '_', 'ошибка обновления в БД ' + temp_row[0][0].strip())
+                elif len(temp_row) > 1:
+                    self.logging_('_', '_', 'нашел больше 1 карточки по вендоркоду ' + temp_row[0][0].strip(), type='exclude')
+                elif len(temp_row) == 0:
+                    new_data.append(row)
+        print('check new data')
+
         for data in db_data:
             for file, rows in files_data.items():
                 temp_row = [row['price'] for row in rows if data[1].strip() == row['kod'].strip()]
                 if len(temp_row) == 1:
-                    temp_list.append(data[1])
-                    id_ = data[0]
-                    sql_update = Config.sql_update.format(file, temp_row[0], id_)
-                    if not self.execute_sql(self.conn, sql_update):
-                        self.logging_('_', '_', 'ошибка обновления в БД ' + data[1].strip())
-                elif len(temp_row) > 1:
-                    self.logging_('_', '_', 'нашел больше 1 карточки по вендоркоду ' + data[1].strip(), type='exclude')
-
+                    temp_list.append(data[1].strip())
             if data[1] not in temp_list:
                 # self.logging_('_', '_', 'не нашел товар по вендоркоду ' + data[1].strip(), type='is_active')
                 sql_active = Config.sql_update_active.format(False, data[0])
@@ -598,14 +638,15 @@ class Main(AutomationWILDBERRIES, Config):
     def get_currency(self):
         currency_json = json.loads(convert('kzt', 'rub', 1000))
         currency_value = 1000 / float(currency_json["amount"])
-        self.send_alert(f'текущий курс валют {round(currency_value, 2)}')
         previuos_currency = self.execute_sql(self.conn, self.sql_get_last_currency, param=1)
-        self.send_alert(f'предыдущий курс валют {round(float(previuos_currency[0][0]), 2)}')
         difference = (100/float(previuos_currency[0][0]))*abs(float(previuos_currency[0][0])-currency_value)
+        currncy_text = f'текущий курс валют {round(currency_value, 2)}\n' + \
+                       f'предыдущий курс валют {round(float(previuos_currency[0][0]), 2)}\n' + \
+                       f'Разница курс валют составляет {difference} %'
+        self.send_alert(currncy_text)
         self.logging_('_', '_', f'текущий курс валют {currency_value}', 'currency')
         self.logging_('_', '_', f'предыдущий курс валют {previuos_currency[0][0]}', 'currency')
         self.logging_('_', '_', f'Разница курс валют составляет {difference} %', 'currency')
-        self.send_alert(f'Разница курс валют составляет {difference} %')
         self.execute_sql(self.conn, self.sql_insert_currency.format(currency_value))
         if difference > self.percent_diff:
             self.send_alert(f'Пропускаю данную сессию {difference} %')
@@ -617,19 +658,15 @@ class Main(AutomationWILDBERRIES, Config):
         currency = self.get_currency()
         if currency == 0:
             return
+        # elif currency < 5.1:
+        #     currency = 5.1
         updated_data = {'updated_prices': 0, 'updated_stock': 0}
         wb_data = self.get_all_cards_from_wb()
-        db_data = self.get_data_from_db()
-        db_data = db_data if db_data else []
         files_data = self.get_data_from_all_files()
         self.logging_('_', '_', 'получил данные с wb, db, files')
-        if not db_data:
-            self.logging_('_', '_', 'данных в db нет, начинаю заполнять БД')
-            self.filling_db_from_wb(wb_data)
-            db_data = self.get_data_from_db()
-            self.update_column_source_in_db(files_data, db_data)
-        else:
-            self.update_column_source_in_db(files_data, db_data)
+        self.filling_db_from_wb(wb_data)
+        db_data = self.get_data_from_db()
+        self.update_column_source_in_db(files_data, db_data, wb_data)
         warehouses_lst = self.get_warehouses()
         db_data = self.get_data_from_db(sql="""select * from public.data_from_wb where "source" != ''""")
         barcode_json = self.collect_barcodes(db_data, wb_data)
@@ -644,8 +681,8 @@ class Main(AutomationWILDBERRIES, Config):
         while True:
 
             now = datetime.datetime.now()
-            begin_time = now.replace(hour=8, minute=0, second=0, microsecond=0)
-            end_time = now.replace(hour=20, minute=0, second=0, microsecond=0)
+            begin_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = now.replace(hour=23, minute=59, second=0, microsecond=0)
             wb_error = False
             if end_time > now > begin_time:
                 try:
@@ -660,8 +697,10 @@ class Main(AutomationWILDBERRIES, Config):
                     self.logging_('_', '_', 'ошибка wb, повторю запрос через 5 мин')
                     time.sleep(300)
                 except Exception as ex:
+                    print(traceback.print_exc())
                     self.logging_('_', '_', 'ошибка в работе робота!!!')
                     self.send_alert('ошибка в работе робота!!!')
+                    self.send_alert(f'{ex.msg}')
                     self.send_alert(str(ex.args))
 
                 finally:
